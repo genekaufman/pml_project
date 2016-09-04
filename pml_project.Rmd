@@ -1,0 +1,100 @@
+---
+title: 'Practical Machine Learning: Course Project'
+author: "Gene Kaufman"
+date: "September 3, 2016"
+output: 
+  html_document:
+    keep_md: true
+
+---
+## Introduction
+Based on data obtained from a variety of fitness monitors, use ML to predict what type ("classe") of exercise were performed by the members of the test data. The data for this project was obtained by and provided for our use at http://groupware.les.inf.puc-rio.br/har 
+
+### Loading and cleaning the data
+Set some global options
+```{r setoptions, message=FALSE}
+require(knitr)
+opts_chunk$set(echo=TRUE, results="asis", warning=FALSE, message=FALSE)
+
+```
+
+Load necessary libraries
+```{r load.libs}
+library(caret)
+library(AppliedPredictiveModeling)
+```
+
+Load data files
+```{r load.data}
+training_csv <- "pml-training.csv";
+RawData <- read.csv(training_csv, na.strings=c("NA","#DIV/0!",""));
+testing_csv <- "pml-testing.csv";
+testData <- read.csv(testing_csv, na.strings=c("NA","#DIV/0!",""));
+```
+
+Clean data
+```{r clean.data}
+#First 7 columns identify the user and/or the time of the record, which is not relevant for our purpose
+RawData <- RawData[,8:160];
+RawData$classe <- as.factor(RawData$classe);
+testDataRaw <- testData[,8:160];
+
+# The test data has many columns for which all rows are NA. Since that doesn't
+#   help us, we will remove those columns from both the test data and the
+#   training set (since we won't be able to predict on them when testing).
+# Create logical vector based on whether all of the rows for a given column
+# are all NA's. one way to do this is to sum the value of is.na for it. If
+# the sum is zero, that indicates that there are no NA's, and therefore we want
+# to use that field
+non_na_fields <- names(testDataRaw[,colSums(is.na(testDataRaw)) == 0]);
+# training data's last column is classe, not problem_id
+non_na_fields_train <- sub("problem_id","classe",non_na_fields);
+
+TrainingData <- RawData[,c(non_na_fields_train)];
+TestData <- testDataRaw[,c(non_na_fields)];
+```
+
+Create data partitions on training data; use 25% as validation set
+```{r partition.data}
+set.seed(42);
+
+trainIndex = createDataPartition(y=TrainingData$classe,p=0.75,list=FALSE);
+training = TrainingData[trainIndex,];
+validation = TrainingData[-trainIndex,];
+```
+
+### Train the data
+Build a Random Forest model, as these typically have the best accuracy results. (I considered comparing multiple models, but my computer is not powerful enough to run multiple models in the time that I had to do the project.)
+
+```{r train.data}
+# Since the model took 15+ hours to build on my computer, I've wrapped it so that I 
+#	don't have to run it each time after I've built it the first time
+trainfitDataFile <- "trainFit.RData";
+if (file.exists(trainfitDataFile)) {
+  load(trainfitDataFile);
+}
+
+if (!exists("trainFit")) {
+  trainFit <- train(classe~ .,data=training,method="rf",prox=TRUE);
+}
+```
+
+### Make predictions against the validation data
+The out of sample error should be very small with a Random Forest model.
+```{r predict.validate,  results="markup"}
+predTrain <- predict(trainFit,validation);
+
+# let's see how we did
+confusionMatrix(predTrain,validation$classe);
+```
+
+### Make predictions against the test data
+```{r predict.test,  results="markup"}
+predTest <- predict(trainFit,testData);
+
+# Return results for use in the quiz
+for (i in 1:length(predTest)) {
+  print(paste(i,predTest[i]));
+}
+
+```
